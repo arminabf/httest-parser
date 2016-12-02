@@ -2,50 +2,10 @@ import os
 import argparse
 from pyparsing import *
 
-script = """
-CLIENT
-_${CONNECT} $HSP_FQDN $SEL_PORT
-_${NEG}
-
-_${REQ} GET /dynloc?0x5cr0x5cn
-__Host: DynamicHost
-__User-Agent: curl
-__
-_${SUBMIT}
-_${WAIT}
-_CLOSE
-END
-
-CLIENT
-_SECOND
-END
-
-SERVER
-_RES
-_WAIT
-__HTTP/1.1 200 Ok
-__foo:bar
-__
-__param
-END
-
-SERVER SSL:$HGW_AS1_PORT
-_RES
-_WAIT
-__HTTP/1.1 200 Ok
-__Content-Length: AUTO
-__Content-Type: text/plain
-__
-__==AS1-OK==
-_CLOSE
-END
-"""
-
 def parse_arguments():
 	""" Creates the argument parser and parses the arguments.
 	:returns: The arguments returned from the parser.
 	"""
-	script = os.path.relpath(__file__)
 	description = "TODO"
 	parser = argparse.ArgumentParser(description=description,
 	                                 formatter_class=argparse.RawTextHelpFormatter)
