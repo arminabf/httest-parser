@@ -35,7 +35,8 @@ lit_data_nocr = Literal("_-").suppress()
 word_alphanum = Word(alphanums)
 word_num = Word(nums)
 word_printables = Word(printables)
-word_hdr_nv = Word(printables, excludeChars=":")
+word_hdrname = Word(printables, excludeChars=":")
+word_hdrvalue = Word(printables + ' ')
 word_data = Word(printables)
 word_variable = Word(alphanums + "_")
 word_env_variable = Combine("$" + \
@@ -50,6 +51,7 @@ word_param = word_printables | word_env_variable
 key_expect_hdrs = CaselessKeyword("headers")
 key_expect_body = CaselessKeyword("body")
 key_expect_exec = CaselessKeyword("exec")
+key_expect_dot = CaselessKeyword(".")
 
 #
 # global and command keywords
@@ -82,7 +84,11 @@ func_wait = assemble_func("WAIT")
 #
 # common compounds
 #
-expect_match_type = key_expect_hdrs | key_expect_body
+comment = '#' + restOfLine
+expect_match_type = key_expect_hdrs | \
+					key_expect_body | \
+					key_expect_exec | \
+					key_expect_dot
 expect = Group((cmd_expect | cmd_expect_h1 | cmd_expect_h2) + \
 			   expect_match_type("type") + \
 			   QuotedString("\"")("regex")) | \
@@ -93,7 +99,7 @@ match = Group(cmd_match + \
 			  QuotedString("\"")("regex") + \
 			  word_variable("variable"))
 
-header = word_hdr_nv("name") + ":" + word_hdr_nv("value")
+header = word_hdrname("name") + ":" + word_hdrvalue("value")
 headerline = Group(lit_data + header)
 headers = Group(ZeroOrMore(headerline))("headers")
 
@@ -147,7 +153,7 @@ requests = Group(connection("connection") + ZeroOrMore(block_request)("requests"
 
 body_client = ZeroOrMore(requests)("fuck")
 block_client = global_client + body_client + block_end
-
+block_client.ignore(comment)
 
 def main():
 	args = parse_arguments()
