@@ -17,6 +17,8 @@ def parse_arguments():
 
 # common literals
 lit_prot_h1 = Literal("HTTP/1.1")
+lit_data = Literal("__").suppress()
+lit_data_nocr = Literal("_-").suppress()
 
 # commond words
 word_alphanum = Word(alphanums)
@@ -26,58 +28,67 @@ word_hdr_nv = Word(printables, excludeChars=":")
 word_data = Word(printables)
 word_variable = Word(alphanums + "_")
 word_env_variable = Combine("$" + \
-					Optional(Literal("{")) + \
+					Optional("{") + \
 					word_variable + \
-					Optional(Literal("}")))
+					Optional("}"))
 word_param = word_printables | word_env_variable
 
 # common keywords
 key_expect_hdrs = CaselessKeyword("headers")
 key_expect_body = CaselessKeyword("body")
 key_expect_exec = CaselessKeyword("exec")
-
-# global and command literals
-block_end = Literal("END").suppress()
-cmd_res = Literal("_RES")
-cmd_req = Literal("_REQ")
-cmd_req_uni = Literal("_${REQ}")
-cmd_wait = Literal("_WAIT")
-cmd_data = Literal("__").suppress()
-cmd_data_nocr = Literal("_-").suppress()
-cmd_close = Literal("_CLOSE")
-cmd_expect = Literal("_EXPECT")
-cmd_match = Literal("_MATCH")
+# global and command keywords
+block_end = Keyword("END").suppress()
+cmd_res = Keyword("_RES")
+cmd_req = Keyword("_REQ")
+cmd_wait = Keyword("_WAIT")
+cmd_close = Keyword("_CLOSE")
+cmd_expect = Keyword("_EXPECT")
+cmd_match = Keyword("_MATCH")
+cmd_hdr_body_sep = Keyword("__")
 
 def assemble_func(keyword):
 	return Combine(Literal("_") + \
 			Literal("$") + \
-			Optional(Literal("{")) + \
+			Optional("{") + \
 			Literal(keyword) + \
-			Optional(Literal("}")))
+			Optional("}"))
+
+def assemble_block(keyword):
+	return Combine(Literal("_") + \
+			Literal(keyword))
 
 func_connect = assemble_func("CONNECT")
 func_neg = assemble_func("NEG")
 func_req = assemble_func("REQ")
+func_expect_status = assemble_func("EXPECT_STATUS")
+func_submit = assemble_func("SUBMIT")
+func_wait = assemble_func("WAIT")
 
-expect_match_type = key_expect_hdrs | key_expect_body("type")
-expect = Group(cmd_expect + \
-			   expect_match_type + \
-			   QuotedString("\"")("regex"))
+block_expect_h1 = Keyword("_EXPECT_H1_ONLY")
+block_expect_h2 = Keyword("_EXPECT_H2_ONLY")
+
+expect_match_type = key_expect_hdrs | key_expect_body
+expect = Group((cmd_expect | block_expect_h1 | block_expect_h2) + \
+			   expect_match_type("type") + \
+			   QuotedString("\"")("regex")) | \
+         Group(func_expect_status + word_num("status"))
+
 match = Group(cmd_match + \
-			  expect_match_type + \
+			  expect_match_type("type") + \
 			  QuotedString("\"")("regex") + \
-			  word_variable)
+			  word_variable("variable"))
 
 # compounds
 header = word_hdr_nv("name") + ":" + word_hdr_nv("value")
-headerline = Group(cmd_data + header)
+headerline = Group(lit_data + header)
 headers = Group(ZeroOrMore(headerline))("headers")
 
 statuscode = Word(nums, max=3)("statuscode")
 statusphrase = Word(alphas)("statusphrase")
-statusline = Group(cmd_data + lit_prot_h1.suppress() + statuscode + statusphrase)("statusline")
+statusline = Group(lit_data + lit_prot_h1.suppress() + statuscode + statusphrase)("statusline")
 
-bodyline = Group(cmd_data + word_data)
+bodyline = Group(lit_data + word_data)
 body = Group(ZeroOrMore(bodyline))("body")
 
 #
@@ -94,39 +105,35 @@ block_response = Group(cmd_res + \
 					   cmd_wait + \
 					   statusline + \
 					   headers + \
-					   cmd_data + \
-					   body + \
+					   cmd_hdr_body_sep + \
+					   Optional(body) + \
 					   Optional(cmd_close))
 body_server = Group(ZeroOrMore(block_response))("response")
 block_server = global_server + body_server + block_end
 
 # CLIENT
-global_client = Literal("CLIENT") + Optional(word_num)("number")
+global_client = Literal("CLIENT") + Optional(word_num)("procs")
 
 connection = (func_connect | cmd_req) + \
 				word_param("host") + \
 				Optional("SSL:") + \
 				word_param("port") + Optional(func_neg)
-request = Group(func_req + \
-				word_param("verb") + \
-				word_param("url"))("request")
-block_request = Optional(connection) + \
-					request + \
-					headers + \
-					cmd_data + \
-					body
-					   # ZeroOrMore(expect)("expectations") + \
-					   # ZeroOrMore(match)("matches") + \
-					   # cmd_wait + \
-					   # statusline + \
-					   # headers + \
-					   # cmd_data + \
-					   # body + \
-					   # Optional(cmd_close)
-					  #)
-body_client = Group(ZeroOrMore(block_request))("request")
+request = func_req + \
+		   word_param("method") + \
+		   word_param("path")
+block_request = Group(request + \
+					  headers + \
+					  cmd_hdr_body_sep + \
+					  Optional(body) + \
+					  ZeroOrMore(expect)("expectations") + \
+					  ZeroOrMore(match)("matches") + \
+					  (cmd_wait | (func_submit + func_wait)) + \
+					  Optional(cmd_close)
+					 )
+requests = Group(connection("connection") + ZeroOrMore(block_request)("requests"))
 
-block_client = global_client + block_request + block_end
+body_client = ZeroOrMore(requests)("fuck")
+block_client = global_client + body_client + block_end
 
 def main():
 	args = parse_arguments()
