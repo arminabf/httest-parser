@@ -15,12 +15,23 @@ def parse_arguments():
 
 	return parser.parse_args()
 
+def assemble_func(keyword):
+	return Combine(Literal("_") + \
+			Literal("$") + \
+			Optional("{") + \
+			Literal(keyword) + \
+			Optional("}"))
+
+#
 # common literals
+#
 lit_prot_h1 = Literal("HTTP/1.1")
 lit_data = Literal("__").suppress()
 lit_data_nocr = Literal("_-").suppress()
 
+#
 # commond words
+#
 word_alphanum = Word(alphanums)
 word_num = Word(nums)
 word_printables = Word(printables)
@@ -33,11 +44,16 @@ word_env_variable = Combine("$" + \
 					Optional("}"))
 word_param = word_printables | word_env_variable
 
+#
 # common keywords
+#
 key_expect_hdrs = CaselessKeyword("headers")
 key_expect_body = CaselessKeyword("body")
 key_expect_exec = CaselessKeyword("exec")
+
+#
 # global and command keywords
+#
 block_end = Keyword("END").suppress()
 cmd_res = Keyword("_RES")
 cmd_req = Keyword("_REQ")
@@ -47,17 +63,15 @@ cmd_expect = Keyword("_EXPECT")
 cmd_match = Keyword("_MATCH")
 cmd_hdr_body_sep = Keyword("__")
 
-def assemble_func(keyword):
-	return Combine(Literal("_") + \
-			Literal("$") + \
-			Optional("{") + \
-			Literal(keyword) + \
-			Optional("}"))
+#
+# custom commands
+#
+cmd_expect_h1 = Keyword("_EXPECT_H1_ONLY")
+cmd_expect_h2 = Keyword("_EXPECT_H2_ONLY")
 
-def assemble_block(keyword):
-	return Combine(Literal("_") + \
-			Literal(keyword))
-
+#
+# custom functions
+#
 func_connect = assemble_func("CONNECT")
 func_neg = assemble_func("NEG")
 func_req = assemble_func("REQ")
@@ -65,11 +79,11 @@ func_expect_status = assemble_func("EXPECT_STATUS")
 func_submit = assemble_func("SUBMIT")
 func_wait = assemble_func("WAIT")
 
-block_expect_h1 = Keyword("_EXPECT_H1_ONLY")
-block_expect_h2 = Keyword("_EXPECT_H2_ONLY")
-
+#
+# common compounds
+#
 expect_match_type = key_expect_hdrs | key_expect_body
-expect = Group((cmd_expect | block_expect_h1 | block_expect_h2) + \
+expect = Group((cmd_expect | cmd_expect_h1 | cmd_expect_h2) + \
 			   expect_match_type("type") + \
 			   QuotedString("\"")("regex")) | \
          Group(func_expect_status + word_num("status"))
@@ -79,7 +93,6 @@ match = Group(cmd_match + \
 			  QuotedString("\"")("regex") + \
 			  word_variable("variable"))
 
-# compounds
 header = word_hdr_nv("name") + ":" + word_hdr_nv("value")
 headerline = Group(lit_data + header)
 headers = Group(ZeroOrMore(headerline))("headers")
@@ -92,10 +105,8 @@ bodyline = Group(lit_data + word_data)
 body = Group(ZeroOrMore(bodyline))("body")
 
 #
-# blocks
+# SERVER compounds
 #
-
-# SERVER
 global_server = Literal("SERVER") + \
 					Optional(Literal("SSL")("ssl") + ":") + \
 					Word(alphanums + "$" + "_")("port")
@@ -111,7 +122,9 @@ block_response = Group(cmd_res + \
 body_server = Group(ZeroOrMore(block_response))("response")
 block_server = global_server + body_server + block_end
 
-# CLIENT
+#
+# CLIENT compounds
+#
 global_client = Literal("CLIENT") + Optional(word_num)("procs")
 
 connection = (func_connect | cmd_req) + \
@@ -134,6 +147,7 @@ requests = Group(connection("connection") + ZeroOrMore(block_request)("requests"
 
 body_client = ZeroOrMore(requests)("fuck")
 block_client = global_client + body_client + block_end
+
 
 def main():
 	args = parse_arguments()
